@@ -9,10 +9,9 @@ Created on Sun Aug 14 12:19:33 2022
 from sqlalchemy import create_engine
 from sqlalchemy import MetaData
 from sqlalchemy import inspect
-from sqlalchemy import Table, Column, Integer, DateTime
+from sqlalchemy import Table, Column, Integer, String, DateTime
 from sqlalchemy import select, insert, update, delete
-from sqlalchemy import func  # agg calcs, count, sum, min
-import random  # for dice rolling
+from sqlalchemy import func  # executes on db hardware
 
 
 def setup_db(in_memory: bool=True):
@@ -39,61 +38,104 @@ def setup_tables(engine, metadata):
         Output: Returns engine, metadata and table
     """
 
-    # Build a census table
-    rolls = Table('rolls', metadata,
+    rolls_t = Table('rolls_t', metadata,
                    # pk autoincrement so you can skip assigning pk value in insert
                    Column('id', 
                           Integer(), 
                           primary_key=True, 
                           autoincrement=True),
-                   Column('roll_value', 
-                          Integer(), 
-                          nullable=False),
                    Column('timestamp_created', 
                           DateTime(timezone=True),
                           # leave timestamp to db to calc, else latency issues
                           server_default=func.now(),
                           # anytime row updates, inserts new timestamp
                           onupdate=func.now()
-                          ))
-    
+                          ),
+                   Column('reason', 
+                          String(60),
+                          nullable=False),
+                   Column('sides', 
+                          Integer(), 
+                          nullable=True),
+                   Column('roll_value', 
+                          Integer(), 
+                          nullable=False),
+                   )
+
+    chars_t = Table('chars_t', metadata,
+                   # pk autoincrement so you can skip assigning pk value in insert
+                   Column('id',
+                          Integer(), 
+                          primary_key=True, 
+                          autoincrement=True),
+                   Column('timestamp_created', 
+                          DateTime(timezone=True),
+                          server_default=func.now(),
+                          onupdate=func.now()
+                          ),
+                   Column('char_name', 
+                          String(60),
+                          nullable=True),
+                   Column('char_race', 
+                          String(60),
+                          nullable=True),
+                   Column('char_class', 
+                          String(60),
+                          nullable=True),
+                   Column('char_alignment', 
+                          String(60),
+                          nullable=True),
+                   Column('strength', 
+                          Integer(), 
+                          nullable=True),
+                   Column('dexterity', 
+                          Integer(), 
+                          nullable=True),
+                   Column('constitution', 
+                          Integer(), 
+                          nullable=True),
+                   Column('intelligence', 
+                          Integer(), 
+                          nullable=True),
+                   Column('wisdom', 
+                          Integer(), 
+                          nullable=True),
+                   Column('charisma', 
+                          Integer(), 
+                          nullable=True),
+                   )
+
     # Create the table in the database
-    # metadata.create_all(engine)  # method 1
-    rolls.create(engine)  # method 2
+    metadata.create_all(engine)  # method 1
+    # rolls_t.create(engine)  # method 2
     
     insp = inspect(engine)
     print(insp.get_table_names())
 
-    return engine, metadata, rolls
+    return engine, metadata, rolls_t, chars_t
 
 
-def insert_rows(engine, tablename):
+def insert_rows(engine, tablename, data):
     """INSERT INTO function. 
-        Input: engine, tablename
+        Input: engine, tablename, data
         Output: None
     """
 
-    roll_value = random.randint(1, 100)
-    data = [
-              {'roll_value': roll_value}
-            , {'roll_value': roll_value}
-            ]
-    
     insert_statement = insert(tablename)
-    # Use values_list to insert data
-    results = engine.execute(insert_statement, data)
-    print(results.rowcount)  # row count
+    engine.execute(insert_statement, data)
 
 
-def update_rows(engine, tablename):
+def update_rows(engine, tablename, data):
     """UPDATE function. 
         Input: engine, tablename
         Output: None
     """
-
-    update_statement = update(tablename).values(roll_value='99')
+    
+    roll_value = '99'
+    data = roll_value
+    update_statement = update(tablename).values(data)
     update_statement = update_statement.where(tablename.columns.id == 1)
-    # results = engine.execute(update_statement)
+    engine.execute(update_statement)
 
 
 def select_rows(engine, tablename):
@@ -109,12 +151,12 @@ def select_rows(engine, tablename):
 
 
 def count_rows(engine, tablename) -> int:
-    """SELECT count(*) function. Executes on database side, instead of len()
+    """SELECT count(*) function.
         Input: engine, tablename
         Output: row_count int
     """
 
-    count_statement = func.count(rolls.columns.id)
+    count_statement = func.count(tablename.columns.id)
     row_count = engine.execute(count_statement).scalar()
     print(row_count)
 
@@ -127,24 +169,28 @@ def delete_rows_all(engine, tablename):
         Output: None
     """
 
-    delete_statement = delete(rolls)
+    delete_statement = delete(tablename)
     print(delete_statement)
     # results = engine.execute(delete_statement)
     print(engine.execute(select([tablename])).fetchall())
 
 
 
-engine, metadata = setup_db()
+# engine, metadata = setup_db()
 
-engine, metadata, rolls = setup_tables(engine, metadata)
+# engine, metadata, rolls_t, chars_t = setup_tables(engine, metadata)
 
-insert_rows(engine, rolls)
+# insert_rows(engine, rolls_t, data)
 
-update_rows(engine, rolls)
+# update_rows(engine, rolls_t)
 
-select_rows(engine, rolls)
+# select_rows(engine, rolls_t)
 
-row_count = count_rows(engine, rolls)
+# row_count = count_rows(engine, rolls_t)
 
-delete_rows_all(engine, rolls)
+# delete_rows_all(engine, rolls_t)
 
+
+
+
+    

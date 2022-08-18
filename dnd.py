@@ -4,108 +4,52 @@ Created on Fri Jul 29 19:31:56 2022
 
 @author: garth
 
-make classes fun with dnd
+make classes and sqlalchemy fun with dnd
+maybe add some unit tests and logging
 """
 # %%
 
-from sqlalchemy import create_engine
-from sqlalchemy import MetaData
-from sqlalchemy import inspect
-from sqlalchemy import Table, Column, Integer, DateTime
-from sqlalchemy import select, insert, update, delete
-from sqlalchemy import func  # agg calcs, count, sum, min
 import random  # for dice rolling
+import os
 
-# engine = create_engine('sqlite:///db.sqlite')  # approach 1 //// for abs path
-engine = create_engine('sqlite:///:memory:')  # better for git, dev
+# change working directory to this script location
+dir_py = os.path.dirname(__file__)
+os.chdir(dir_py)
 
-# Create a metadata object
-metadata = MetaData()
-
-# Build a census table
-rolls = Table('rolls', metadata,
-               # pk autoincrement so you can skip assigning pk value in insert
-               Column('id', 
-                      Integer(), 
-                      primary_key=True, 
-                      autoincrement=True),
-               Column('roll_value', 
-                      Integer(), 
-                      nullable=False),
-               Column('timestamp_created', 
-                      DateTime(timezone=True),
-                      # leave timestamp to db to calc, else latency issues
-                      server_default=func.now(),
-                      # anytime row updates, inserts new timestamp
-                      onupdate=func.now()
-                      ))
-
-# Create the table in the database
-# metadata.create_all(engine)  # method 1
-rolls.create(engine)  # method 2
-
-insp = inspect(engine)
-print(insp.get_table_names())
-
-# %%
-
-# insert data
-roll_value = random.randint(1, 100)
-data = [
-          {'roll_value': roll_value}
-        , {'roll_value': roll_value}
-        ]
-
-insert_statement = insert(rolls)
-# Use values_list to insert data
-results = engine.execute(insert_statement, data)
-print(results.rowcount)  # row count
-
-# %%
-
-# update
-update_statement = update(rolls).values(roll_value='99')
-update_statement = update_statement.where(rolls.columns.id == 1)
-results = engine.execute(update_statement)
-
-# %%
-
-# select *
-select_statement = select([rolls])
-results = engine.execute(select_statement).fetchmany(size=100)
-print(select_statement)
-print(results)
-
-# %%
-
-# execute operation in db
-count_statement = func.count(rolls.columns.id)
-row_count = engine.execute(count_statement).scalar()
-print(row_count)
-
-# %%
-
-# delete *
-delete_statement = delete(rolls)
-print(delete_statement)
-results = engine.execute(delete_statement)
-
-# select *
-print(engine.execute(select_statement).fetchall())
+import db
 
 
 # %%
 
-class die(object):
+engine, metadata = db.setup_db()
+engine, metadata, rolls_t, chars_t = db.setup_tables(engine, metadata)
+# db.update_rows(engine, rolls_t)
+# db.select_rows(engine, rolls_t)
+# row_count = db.count_rows(engine, rolls_t)
+# db.delete_rows_all(engine, rolls_t)
+
+# %%
+
+
+class Die(object):
     def __init__(self, sides=6):
         self.sides = sides
 
-    def roll_die(self):
-        print(random.randint(1, self.sides))
-        return random.randint(1, self.sides)
+    def roll_die(self, reason='Not provided'):
+        roll_value = random.randint(1, self.sides)
+
+        data = {
+                'reason': reason,
+                'sides': self.sides,
+                'roll_value': roll_value
+                }
+
+        db.insert_rows(engine, rolls_t, data)
+
+        return roll_value
 
 
-class cup_of_dice(object):
+class CupOfDice(object):
     def __init__(self):
         self.dice = []
 
@@ -115,16 +59,144 @@ class cup_of_dice(object):
     def remove_dice(self, *del_dice):
         self.dice -= del_dice
 
-    def roll_dice(self):
+    def roll_dice(self, reason='Not provided'):
+        roll_values = []
         for die in self.dice:
-            die.roll_die()
+            roll_value = die.roll_die(reason)
+            roll_values.append(roll_value)
+        return roll_values
 
 # %%
 
-cup = cup_of_dice()
-cup.add_dice(die(4), die(6))
+# check dice functionality
+one_d_four = Die(4)
+roll_value = one_d_four.roll_die('saving throw')
+
+cup = CupOfDice()
+cup.add_dice(Die(4), Die(6))
+cup.roll_dice('saving throw')
+row_count = db.count_rows(engine, rolls_t)
+db.select_rows(engine, rolls_t)
 
 # %%
 
-cup.roll_dice()
+class Character(object):
+    """Create character. Write attributes to db tables. Update tables on set"""
+    def __init__(self,
+                 char_name="Brutus",
+                 char_race="human",
+                 char_class="fighter",
+                 char_alignment="chaotic good"):
 
+        self.char_name = char_name
+        self.char_race = char_race
+        self.char_class = char_class
+        self.char_alignment = char_alignment
+        
+        self.ability_rolls = []
+        self.strength = 0
+        self.dexterity = 0
+        self.constitution = 0
+        self.intelligence = 0
+        self.wisdom = 0
+        self.charisma = 0
+        
+        # insert data into chars_t
+        data = {
+                'char_name':        self.char_name,
+                'char_race':        self.char_race,
+                'char_class':       self.char_class,
+                'char_alignment':   self.char_alignment,
+                'strength':         self.strength,
+                'dexterity':        self.dexterity,
+                'constitution':     self.constitution,
+                'intelligence':     self.intelligence,
+                'wisdom':           self.wisdom,
+                'charisma':         self.charisma,
+                }
+
+        db.insert_rows(engine, chars_t, data)
+
+    def roll_ability_score(self):
+        """roll 4d6 and discard the lowest"""
+        cup = CupOfDice()
+        cup.add_dice(Die(6), Die(6), Die(6), Die(6))
+        roll_values = cup.roll_dice("ability score roll")
+
+        # discard lowest roll, per dnd5e
+        roll_values.remove(min(roll_values))
+        return sum(roll_values)
+
+    def roll_ability_scores(self):
+        ability_rolls = []
+        for each in range(6):
+            roll_values = self.roll_ability_score()
+            ability_rolls.append(roll_values)
+        self.ability_rolls = ability_rolls
+
+    def assign_scores(self):
+        # could dict
+        self.strength = self.ability_rolls[0]
+        self.dexterity = self.ability_rolls[1]
+        self.constitution = self.ability_rolls[2]
+        self.intelligence = self.ability_rolls[3]
+        self.wisdom = self.ability_rolls[4]
+        self.charisma = self.ability_rolls[5]
+        del self.ability_rolls
+        
+        # @TODO: update chars_t
+        # db.update_rows(engine, chars_t)
+
+        
+
+    def get_char_sheet(self):
+        # could dict
+        return \
+        f"""{self.char_name}:
+        strength: {self.strength}
+        dexterity: {self.dexterity}
+        constitution: {self.constitution}
+        intelligence: {self.intelligence}
+        wisdom: {self.wisdom}
+        charisma: {self.charisma}
+        """
+        
+# check Character functionality
+gimli = Character("gimli", "dwarf", "cleric", "lawful good")
+gimli.roll_ability_scores()
+gimli.assign_scores()
+char_sheet = gimli.get_char_sheet()
+
+# %%
+
+# print(vars(gimli))
+db.select_rows(engine, chars_t)
+
+# %%
+
+db.select_rows(engine, rolls_t)
+
+# %%
+
+    # python get/set
+    # class Foo(object):
+    #     def __init__(self, x):
+    #         self.x = x
+    
+    # f = Foo(10)
+    # print(f.x)  # 10
+    # f.x = 20
+    # print(f.x)  # 20
+
+    # get/set with protections
+    # @property
+    # def char_race(self):
+    #     return self._char_race
+
+    # @char_race.setter
+    # def char_race(self, new_char_race):
+    #     if type(new_char_race) == str \
+    #             and new_char_race.lower() in ["human", "dwarf", "elf", "halfling"]:
+    #         self.char_race = new_char_race
+    #     else:
+    #         raise Exception("Choose from human, dwarf, elf, halfling")
