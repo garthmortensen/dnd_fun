@@ -9,6 +9,7 @@ class Armor extends Item
 @enduml
 """
 
+
 # Define the Character class
 class Character(object):
     # constructor will be called whenever class is instantiated
@@ -19,10 +20,8 @@ class Character(object):
         self.size = size
         print(f"species: {self.species}, name: {self.name}, size: {self.size}.")
 
-    def laugh(self):
-        print("Hahaha!")
-
-    def move(self, distance):
+    @staticmethod
+    def move(distance):
         print(f"I move {distance}")
 
     def drop_items(self):
@@ -31,35 +30,49 @@ class Character(object):
     def __repr__(self):
         return f"Species: {self.species}, name: {self.name}, size: {self.size}."
 
-class Hero(Character):
+
+class Hero(object):
     def __init__(self, species, name, size, hp, gold, hit_dice, skill):
-        super().__init__(species, name, size)
         self.hp = hp
         self.gold = gold
         self.hit_dice = hit_dice
         self.skill = skill
+        # build the hero class using character
+        # part of a hero is character data and operations
+        # @!!!: hero has a species. Hero has a name. Hero has a size!
+        # @!!!: hero has an ability to move and drop_items!
+        self.character = Character(species, name, size)
+
+    # this is an `interface` to expose functionality of the embedded object
+    def move(self):
+        self.character.move()  # hero.move invokes character.move()
+        # UML for Java Programmers for definition of composition, aggregation, etc
+        # pg 32
 
     def tell_skill(self):
         print(f"Ny skill is {self.skill}.")
 
-# what makes a monster a monster vs a hero, in the eyes of a programmer? Not alignment.
-class Monster(Character):
+
+class Monster(object):
     def __init__(self, species, name, size, hp, gold, hit_dice):
-        super().__init__(species, name, size)
         self.hp = hp
         self.gold = gold
         self.hit_dice = hit_dice
+        self.character = Character(species, name, size)  # composition
 
-    def roar(self):
+    @staticmethod
+    def roar():
         print("ROOOAAAARRR!")
 
-class NPC(Character):
+
+class NPC(object):
     def __init__(self, species, name, size, hp, gold):
-        super().__init__(species, name, size)
         self.hp = hp
         self.gold = gold
+        self.character = Character(species, name, size)  # composition
 
-    def trade(self):
+    @staticmethod
+    def trade():
         print("Let's make a trade. Here are my wares.")
 
 

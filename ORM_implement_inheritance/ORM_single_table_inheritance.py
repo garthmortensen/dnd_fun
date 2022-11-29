@@ -14,40 +14,57 @@ from sqlalchemy import inspect  # used to explore existing db schema. no purpose
 Base = declarative_base()
 
 
-class Hero(Base):
-    __tablename__ = 'hero'
-    __table_args__ = {'extend_existing': True}
+class Character(Base):
+    __tablename__ = 'character'
     id = Column(Integer, primary_key=True)
-    species = Column(String(255))
-    name = Column(String(255))
-    size = Column(String(255))
+    character_type = Column(String(255), nullable=False)
+    species = Column(String(255), nullable=False)
+    name = Column(String(255), nullable=False)
+    size = Column(String(255), nullable=False)
+    # all the following columns were relocated to Base class, due to conflicting column names in subclasses
+    # https://docs.sqlalchemy.org/en/20/orm/inheritance.html#resolving-column-conflicts
+    # A tricky case comes up when two subclasses want to specify the same column
     hp = Column(Integer)
     gold = Column(Integer)
     hit_dice = Column(Integer)
+    __mapper_args__ = {'polymorphic_on': 'character_type'}
+
+
+class Hero(Character):
+    __mapper_args__ = {'polymorphic_identity': 'hero'}
     skill = Column(String(255))
 
+    @staticmethod
+    def move(distance):
+        print(f"I move {distance}")
 
-class Monster(Base):
-    __tablename__ = 'monster'
-    __table_args__ = {'extend_existing': True}
-    id = Column(Integer, primary_key=True)
-    species = Column(String(255))
-    name = Column(String(255))
-    size = Column(String(255))
-    hp = Column(Integer)
-    gold = Column(Integer)
-    hit_dice = Column(Integer)
+    def drop_items(self):
+        pass
+
+    def tell_skill(self):
+        print(f"Ny skill is {self.skill}.")
+
+    def __repr__(self):
+        return f"Species: {self.species}, name: {self.name}, size: {self.size}."
 
 
-class NPC(Base):
-    __tablename__ = 'monster'
-    __table_args__ = {'extend_existing': True}
-    id = Column(Integer, primary_key=True)
-    species = Column(String(255))
-    name = Column(String(255))
-    size = Column(String(255))
-    hp = Column(Integer)
-    gold = Column(Integer)
+class Monster(Character):
+    __mapper_args__ = {'polymorphic_identity': 'monster'}
+
+    @staticmethod
+    def roar():
+        print("ROOOAAAARRR!")
+
+    def __repr__(self):
+        return f"Species: {self.species}, name: {self.name}, size: {self.size}."
+
+
+class NPC(Character):
+    __mapper_args__ = {'polymorphic_identity': 'npc'}
+
+    @staticmethod
+    def trade():
+        print("Let's make a trade. Here are my wares.")
 
 
 # create some characters
@@ -56,7 +73,6 @@ elminster = Hero(species="Human", name="Elminster", size="medium", hp=30, gold=5
 kobold = Monster(species="Kobold", name="Cabbage Beak", size="small", hp=15, gold=5, hit_dice=5)
 flying_sword = Monster(species="Flying Sword", name="Sharpie", size="small", hp=10, gold=10, hit_dice=0)
 griswold = NPC(species="Human", name="Griswold the Blacksmith", size="medium", hp=50, gold=1000)
-
 
 engine = create_engine("sqlite:///dnd.sqlite")  # echo=True
 conn = engine.connect()
@@ -87,3 +103,5 @@ print(f"tables: {inspector.get_table_names()}")
 columns = inspector.get_columns('monster')
 for column in columns:
     print(column["name"], column["type"])
+
+griswold.trade()
